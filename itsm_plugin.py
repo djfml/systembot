@@ -14,16 +14,25 @@ passwd = 'pass4ever'
 
 # mq info
 mq_server_ip = 'localhost'
+mq_exchange_name = 'systembot'
+mq_routing_key = 'warn_ticket'
+mq_routing_key_commit = "commit"
+
+queue_warn_list = 'system.autowarnner.warnlist'
 queue_patrol_restart = 'system.autowarnner.patrol.restart'
 queue_patrol_checkalive = 'system.autowarnner.patrol.checkalive'
-queue_warn_list = 'system.autowarnner.warnlist'
+queue_commit = 'system.autowarnner.commit'
 
 warn_url_prfix = 'http://10.98.81.13/itsm/itsmWarningInfoAction!pageSearch.action?_timestamp='
 warn_detail_url = 'http://10.98.81.13/itsm/itsmWarningInfoAction!view.action'
+warn_addlog_url = 'http://10.98.81.13/itsm/itsmWarningInfoAction!addUserLog.action'
 
 #logger
 logging.config.fileConfig("logging.conf")
 logger = logging.getLogger("ITSMScanner")
+
+session = None
+connection = pika.BlockingConnection(pika.ConnectionParameters(mq_server_ip))
 
 # json data
 postdata = {
@@ -45,6 +54,10 @@ sendData = {
     "warn_topic": "",
     "warn_content": ""
 }
+addlogData = {
+    "id": "",
+    "userLog": "XXX"
+}
 
 class ITSMScanner(threading.Thread):
     """docstring for ."""
@@ -52,12 +65,17 @@ class ITSMScanner(threading.Thread):
     session = None
     connection = None
 
-    def __init__(self):
+    def __init__(self, session, connection):
         super(ITSMScanner,self).__init__()
+        self.session = session
+        self.connection = connection
 
     def __del__(self):
         logger.debug("destruct scanner...")
         # need to destruct connection & session?
+
+    def getConnection(self):
+        return self.connection
 
     def get_warn_tickets(self, NumOfDays=-1, title="Patrol"):
         logger.debug("get_warn_tickets")
@@ -76,7 +94,9 @@ class ITSMScanner(threading.Thread):
         logger.debug(warn_url)
 
         channel = self.connection.channel()
+        channel.exchange_declare(exchange=mq_exchange_name, type='direct')
         channel.queue_declare(queue=queue_warn_list)
+        channel.queue_bind(exchange=mq_exchange_name, queue=queue_warn_list, routing_key=mq_routing_key)
 
         try:
             res = self.session.post(warn_url, data=postdata)
@@ -105,7 +125,7 @@ class ITSMScanner(threading.Thread):
                     sendData['warn_topic'] = warn['warTopic']
                     sendData['warn_content'] = warn['warContent']
                     msg_body = json.dumps(sendData)
-                    channel.basic_publish(exchange='', routing_key=queue_warn_list, body=msg_body)
+                    channel.basic_publish(exchange=mq_exchange_name, routing_key=mq_routing_key, body=msg_body)
 
                 except Exception as e:
                     logger.error(traceback.print_exc())
@@ -125,16 +145,12 @@ class ITSMScanner(threading.Thread):
         logger.debug("clean up scanner's sessions...")
 
     def run(self):
-        self.session = Get_session(login_url, username, passwd)
-        if not self.session:
-            logger.error("Get session Failed")
-            return
         self.connection = pika.BlockingConnection(pika.ConnectionParameters(mq_server_ip))
 
         logger.info("Scanner thread (%s) is running... " %(self.getName()))
         #for i in range(3):
         while True:
-            self.get_warn_tickets(-1, '')
+            self.get_warn_tickets(-3, 'Patrol')
             logger.info (" ...<<<<<<<...")
             sleep(30)
 
@@ -162,15 +178,50 @@ def Get_session(url, username, passwd):
     else:
         return
 
+def callback(ch, method, properties, body):
+    msg  = eval(body)
+    print(" [x] Received %s" % msg )
+    warn_id = msg['warn_id']
+    warn_no = msg['warn_no']
+
+    addlogData['id'] = warn_id
+    addlogData['userLog'] = '[sysbot] [A]' + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    res = session.post(warn_addlog_url,addlogData)
+    print(res.text)
+
+    print ("    ####--- Warn: %s committed... " % warn_no )
+    time.sleep(body.count(b'.'))
+    print(" [x] Done")
+    ch.basic_ack(delivery_tag = method.delivery_tag)
+
 """
 1. get latest warning message and put them into message queue
 2. close itsm warn message
 """
 if __name__ == '__main__':
-    scanner = ITSMScanner()
+
+    session = Get_session(login_url, username, passwd)
+    if not session:
+        logger.error("Get session Failed")
+        exit
+
+    # constuct scanner
+    scanner = ITSMScanner(session, connection)
     scanner.setDaemon(True)
     scanner.start()
     logger.info("##### scanner end. #####")
+
+    # declare queue for commit handling
+    commit_channel = connection.channel()
+    commit_channel.exchange_declare(exchange=mq_exchange_name, type='direct')
+    commit_channel.queue_declare(queue=queue_commit)
+    commit_channel.queue_bind(exchange=mq_exchange_name, queue=queue_commit, routing_key=mq_routing_key_commit)
+
+    #channel.queue_declare(queue=queue_warn_list)
+    commit_channel.basic_qos(prefetch_count=1)
+    commit_channel.basic_consume(callback, queue=queue_commit)
+    commit_channel.start_consuming()
+
     try:
         while scanner.isAlive():
             sleep(60)
