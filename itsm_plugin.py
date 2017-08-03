@@ -8,7 +8,7 @@ from time import sleep
 import traceback
 import logging,logging.config
 
-login_url = 'http://10.98.81.13/itsm/j_spring_security_check'
+itsm_ip = '10.98.81.13'
 username = '03661'
 passwd = 'pass4ever'
 
@@ -23,16 +23,18 @@ queue_patrol_restart = 'system.autowarnner.patrol.restart'
 queue_patrol_checkalive = 'system.autowarnner.patrol.checkalive'
 queue_commit = 'system.autowarnner.commit'
 
-warn_url_prfix = 'http://10.98.81.13/itsm/itsmWarningInfoAction!pageSearch.action?_timestamp='
-warn_detail_url = 'http://10.98.81.13/itsm/itsmWarningInfoAction!view.action'
-warn_addlog_url = 'http://10.98.81.13/itsm/itsmWarningInfoAction!addUserLog.action'
+login_url = 'http://' + itsm_ip + '/itsm/j_spring_security_check'
+warn_url_prfix = 'http://' + itsm_ip + '/itsm/itsmWarningInfoAction!pageSearch.action?_timestamp='
+warn_detail_url = 'http://' + itsm_ip + '/itsm/itsmWarningInfoAction!view.action'
+warn_addlog_url = 'http://'+ itsm_ip + '/itsm/itsmWarningInfoAction!addUserLog.action'
 
 #logger
 logging.config.fileConfig("logging.conf")
-logger = logging.getLogger("ITSMScanner")
+logger = logging.getLogger("scanner")
 
 session = None
-connection = pika.BlockingConnection(pika.ConnectionParameters(mq_server_ip))
+authentication = pika.PlainCredentials('sysbot', 'sysbot')
+connection = pika.BlockingConnection(pika.ConnectionParameters(host=mq_server_ip, port=5672, credentials=authentication))
 
 # json data
 postdata = {

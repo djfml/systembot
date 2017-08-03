@@ -69,7 +69,8 @@ def restart_patrol(warn_id, warn_no, ip_address):
 if __name__ == '__main__':
     # do something
     print(' [*] Waiting for messages. To exit press CTRL+C')
-    connection = pika.BlockingConnection(pika.ConnectionParameters(mq_server_ip))
+    authentication = pika.PlainCredentials('sysbot', 'sysbot')
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host=mq_server_ip,port=5672,credentials=authentication))
 
     # declare queue for warn ticket list
     channel = connection.channel()
