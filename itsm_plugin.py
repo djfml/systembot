@@ -27,6 +27,8 @@ login_url = 'http://' + itsm_ip + '/itsm/j_spring_security_check'
 warn_url_prfix = 'http://' + itsm_ip + '/itsm/itsmWarningInfoAction!pageSearch.action?_timestamp='
 warn_detail_url = 'http://' + itsm_ip + '/itsm/itsmWarningInfoAction!view.action'
 warn_addlog_url = 'http://'+ itsm_ip + '/itsm/itsmWarningInfoAction!addUserLog.action'
+warn_accept_url = 'http://'+ itsm_ip + '/itsm/itsmWarningInfoAction!accept.action'
+warn_close_url = 'http://'+ itsm_ip + '/itsm/itsmWarningInfoAction!close.action'
 
 #logger
 logging.config.fileConfig("logging.conf")
@@ -46,8 +48,15 @@ postdata = {
     'queryWarOrigin': "40,160", # Warn srouce - sysm, nbu
     'queryWarStatus': "" # Warn status - unhandled (10)
 }
-detaildata = {
-    'id': ""
+acceptdata = {
+    'id': "",
+    'warNo': ""
+}
+closedata = {
+    'id': "",
+    'ids': "",
+    'closeCode': "30",
+    'userLog': "计划内告警，重启Patrol Agent"
 }
 sendData = {
     "ip": "",
@@ -114,10 +123,14 @@ class ITSMScanner(threading.Thread):
                         logger.info( ">>>> current_warn_id is updated to %d " %( int(warn['id']) ) )
 
                     logger.info ( "| %s | %d | %s |" %(warn['warNo'] ,(warn['id']), warn['warContent']))
+
+                    # Accept warn ticket
+                    acceptdata['id'] = warn['id']
+                    acceptdata['warNo'] = warn['warNo']
+                    self.session.post(warn_accept_url, data=acceptdata)
+
                     # Get target ip address
-                    detaildata['id'] = warn['id']
-                    detail = self.session.post(warn_detail_url, data=detaildata)
-                    target_ip_address = detail.json()['data']['oppositeNo'].split('/')[1]
+                    target_ip_address = warn['warContent'].split(',')[2]
                     logger.info( "\t ip_address = %s " %(target_ip_address ))
 
                     # put data into message queue
@@ -186,14 +199,25 @@ def callback(ch, method, properties, body):
     warn_id = msg['warn_id']
     warn_no = msg['warn_no']
 
-    addlogData['id'] = warn_id
-    addlogData['userLog'] = '[sysbot] [A]' + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    res = session.post(warn_addlog_url,addlogData)
-    print(res.text)
+    try:
+        addlogData['id'] = warn_id
+        addlogData['userLog'] = '[sysbot] [A] finish restart @' + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        #closedata['id'] = warn_id
+        #closedata['ids'] = warn_id
+        session.post(warn_addlog_url, addlogData)
 
-    print ("    ####--- Warn: %s committed... " % warn_no )
-    time.sleep(body.count(b'.'))
-    print(" [x] Done")
+        # TODO need check whether the target recovers
+        # TODO PUT THIS SCRIPT ON PATROL CENTER
+        #for x in xrange(3):
+        #    sleep(120)
+        #session.post(warn_close_url, closedata)
+
+        print ("    ####--- Warn: %s committed... " % warn_no )
+        time.sleep(body.count(b'.'))
+        print(" [x] Done")
+    except Exception as e:
+        print(traceback.print_exc())
+
     ch.basic_ack(delivery_tag = method.delivery_tag)
 
 """

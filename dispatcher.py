@@ -55,16 +55,13 @@ def callback(ch, method, properties, body):
     ch.basic_ack(delivery_tag = method.delivery_tag)
 
 def restart_patrol(warn_id, warn_no, ip_address):
-    print(" [P] begin restart ")
+    print(" [P] put restart request into queue ")
     sendData['ip_address'] = ip_address
     sendData['warn_id'] = warn_id
     sendData['warn_no'] = warn_no
     msg_body = json.dumps(sendData)
+    # put restart info into queue with routing key mq_routing_key_patrol_restart
     handler_channel.basic_publish(exchange=mq_exchange_name, routing_key=mq_routing_key_patrol_restart, body=msg_body)
-
-    #simulate commit action, which should be taken on the target machine
-    commit_channel.basic_publish(exchange=mq_exchange_name, routing_key=mq_routing_key_commit, body=msg_body)
-
 
 if __name__ == '__main__':
     # do something
@@ -89,7 +86,7 @@ if __name__ == '__main__':
     commit_channel.queue_declare(queue=queue_commit)
     commit_channel.queue_bind(exchange=mq_exchange_name, queue=queue_commit, routing_key=mq_routing_key_commit)
 
-    #channel.queue_declare(queue=queue_warn_list)
+    # waiting to handle warn messages
     channel.basic_qos(prefetch_count=1)
     channel.basic_consume(callback, queue=queue_warn_list)
     channel.start_consuming()
