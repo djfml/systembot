@@ -8,9 +8,9 @@ from time import sleep
 import traceback
 import logging,logging.config
 
-itsm_ip = '10.98.81.13'
-username = '03661'
-passwd = 'pass4ever'
+itsm_ip = '1.1.1.1' # target ip address
+username = 'yourname'
+passwd = 'yourpwd'
 
 # mq info
 mq_server_ip = 'localhost'
