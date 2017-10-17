@@ -11,7 +11,7 @@ then
   count=1
   while [ $count -le 2 ]
   do
-    PatrolCli "user patrol "Srcb\!1234"" "connect ${TARGET_IP} 3181" "execpsl \"set(\\\"/PROCPRES/PatrolAgent/PROCPPMem/value\\\",${WARN_VALUE});\""
+    PatrolCli "user patrol "-------"" "connect ${TARGET_IP} 3181" "execpsl \"set(\\\"/PROCPRES/PatrolAgent/PROCPPMem/value\\\",${WARN_VALUE});\""
     count=$((count+1))
   done
   exit 0
